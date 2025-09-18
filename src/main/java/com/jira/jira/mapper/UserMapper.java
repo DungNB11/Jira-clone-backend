@@ -21,24 +21,24 @@ public interface UserMapper {
     @Mapping(target = "isActive", ignore = true)
     User toUser(RegisterRequest request);
 
-    default LoginResponse toLoginResponse(User user, String token) {
+    default LoginResponse toLoginResponse(User user, String accessToken) {
         if (user == null) {
             return null;
         }
 
         return LoginResponse.builder()
-                .token(token)
+                .accessToken(accessToken)
                 .user(toUserInfoResponse(user))
                 .build();
     }
 
-    default RegisterResponse toRegisterResponse(User user, String token) {
+    default RegisterResponse toRegisterResponse(User user, String accessToken) {
         if (user == null) {
             return null;
         }
 
         return RegisterResponse.builder()
-                .token(token)
+                .accessToken(accessToken)
                 .user(toUserInfoResponse(user))
                 .build();
     }

@@ -16,6 +16,8 @@ public enum ErrorCode {
     INVALID_CREDENTIALS("INVALID_CREDENTIALS", "Invalid email or password"),
     TOKEN_EXPIRED("TOKEN_EXPIRED", "JWT token has expired"),
     TOKEN_INVALID("TOKEN_INVALID", "JWT token is invalid"),
+    REFRESH_TOKEN_EXPIRED("REFRESH_TOKEN_EXPIRED", "Refresh token has expired"),
+    REFRESH_TOKEN_INVALID("REFRESH_TOKEN_INVALID", "Refresh token is invalid"),
 
     // User errors
     USER_NOT_FOUND("USER_NOT_FOUND", "User not found"),

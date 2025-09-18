@@ -1,15 +1,15 @@
 package com.jira.jira.service;
 
 import com.jira.jira.dto.request.LoginRequest;
+import com.jira.jira.dto.request.RefreshTokenRequest;
 import com.jira.jira.dto.request.RegisterRequest;
-import com.jira.jira.dto.response.LoginResponse;
-import com.jira.jira.dto.response.RegisterResponse;
-import com.jira.jira.dto.response.TokenValidationResponse;
-import com.jira.jira.dto.response.UserInfoResponse;
+import com.jira.jira.dto.response.*;
 import com.jira.jira.exception.BusinessException;
 import com.jira.jira.exception.ErrorCode;
 import com.jira.jira.mapper.UserMapper;
+import com.jira.jira.model.RefreshToken;
 import com.jira.jira.model.User;
+import com.jira.jira.repository.RefreshTokenRepository;
 import com.jira.jira.repository.UserRepository;
 import com.jira.jira.security.JwtUtil;
 import lombok.AccessLevel;
@@ -17,17 +17,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class AuthService {
     UserRepository userRepository;
+    RefreshTokenRepository refreshTokenRepository;
     PasswordEncoder passwordEncoder;
     JwtUtil jwtUtil;
     UserMapper userMapper;
@@ -47,30 +48,36 @@ public class AuthService {
         User savedUser = userRepository.save(user);
 
         // Generate JWT token
-        String token = jwtUtil.generateToken(savedUser.getEmail());
+        String accessToken = jwtUtil.generateToken(savedUser.getEmail());
+        String refreshToken = createRefreshToken(savedUser.getId());
 
         // Map to response using mapper
-        return userMapper.toRegisterResponse(savedUser, token);
+        RegisterResponse response = userMapper.toRegisterResponse(savedUser, accessToken);
+
+        response.setRefreshToken(refreshToken);
+        return response;
     }
 
     public LoginResponse login(LoginRequest request) {
         // Authenticate user
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword()));
 
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User user = userRepository.findByEmail(request.getEmail()).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         if (!user.getIsActive()) {
             throw new BusinessException(ErrorCode.USER_INACTIVE);
         }
 
-        // Generate JWT token
-        String token = jwtUtil.generateToken(user.getEmail());
+        // Generate JWT tokens
+        String accessToken = jwtUtil.generateToken(user.getEmail());
+        String refreshToken = createRefreshToken(user.getId());
 
         // Map to response using mapper
-        return userMapper.toLoginResponse(user, token);
+        LoginResponse response = userMapper.toLoginResponse(user, accessToken);
+
+        response.setRefreshToken(refreshToken);
+
+        return response;
     }
 
     public TokenValidationResponse validateToken(String token) {
@@ -88,8 +95,7 @@ public class AuthService {
         String email = jwtUtil.extractUsername(token);
 
         // Get user details
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         if (!user.getIsActive()) {
             throw new BusinessException(ErrorCode.USER_INACTIVE);
@@ -102,5 +108,62 @@ public class AuthService {
     public UserInfoResponse getCurrentUser(String token) {
         TokenValidationResponse validation = validateToken(token);
         return validation.getUser();
+    }
+
+    public RefreshTokenResponse refreshToken(RefreshTokenRequest request) {
+
+        RefreshToken refreshToken = refreshTokenRepository.findByTokenAndIsActive(request.getRefreshToken(), true).orElseThrow(() -> new BusinessException(ErrorCode.REFRESH_TOKEN_INVALID));
+
+        if (refreshToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            // Delete expired refresh token
+            refreshTokenRepository.delete(refreshToken);
+            throw new BusinessException(ErrorCode.TOKEN_EXPIRED);
+        }
+
+        // Get user
+        User user = userRepository.findById(refreshToken.getUserId()).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        if (!user.getIsActive()) {
+            throw new BusinessException(ErrorCode.USER_INACTIVE);
+        }
+
+        String newAccessToken = jwtUtil.generateToken(user.getEmail());
+
+        String newRefreshToken = createRefreshToken(user.getId());
+
+        refreshTokenRepository.delete(refreshToken);
+
+        RefreshTokenResponse response = RefreshTokenResponse.builder().accessToken(newAccessToken).build();
+
+        response.setRefreshToken(newRefreshToken);
+
+        return response;
+    }
+
+    public void logout(String refreshToken) {
+        refreshTokenRepository.findByTokenAndIsActive(refreshToken, true).ifPresent(refreshTokenRepository::delete);
+    }
+
+    public void logoutAllDevices(String userId) {
+        refreshTokenRepository.deleteByUserId(userId);
+    }
+
+
+    private String createRefreshToken(String userId) {
+        // Generate unique refresh token
+        String refreshTokenValue = UUID.randomUUID().toString();
+
+        RefreshToken refreshToken = RefreshToken.builder()
+                .token(refreshTokenValue)
+                .userId(userId)
+                .expiresAt(LocalDateTime.now().plusDays(7))
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .isActive(true)
+                .build();
+
+        refreshTokenRepository.save(refreshToken);
+
+        return refreshTokenValue;
     }
 }
