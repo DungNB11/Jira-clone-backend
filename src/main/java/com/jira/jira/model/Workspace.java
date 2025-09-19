@@ -1,8 +1,6 @@
 package com.jira.jira.model;
 
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -14,24 +12,28 @@ import java.util.List;
 @Data
 @Document(collection = "workspace")
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Workspace {
     @Id
-    String id;
+    private String id;
     @Field("owner_id")
-    String ownerId;
-    String name;
-    @Field("join_url")
-    String joinUrl;
+    private String ownerId;
+    private String name;
+    private String description;
+    @Field("is_public")
+    private boolean isPublic;
+    @Field("member_ids")
+    private List<String> memberIds;
     @Field("avatar_url")
-    String avatarUrl;
-    String description;
-    @Field("join_users")
-    List<String> joinUserIds; // List of user IDs
+    private String avatarUrl;
+    @Field("join_url")
+    private String joinUrl;
     @Field("created_at")
-    LocalDateTime createdAt;
+    private LocalDateTime createdAt;
     @Field("updated_at")
-    LocalDateTime updatedAt;
+    private LocalDateTime updatedAt;
     @Field("is_active")
-    Boolean isActive;
+    private boolean isActive;
 }
